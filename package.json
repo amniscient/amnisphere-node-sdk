@@ -1,6 +1,6 @@
 {
-    "name": "",
-    "version": "1.0.0",
+    "name": "amniscient",
+    "version": "0.0.1",
     "private": false,
     "repository": "https://github.com/amniscient/amnisphere-node-sdk",
     "main": "./index.js",

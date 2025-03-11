@@ -8,7 +8,7 @@
  *         organizationId: "organization_id"
  *     }
  */
-export interface ModelLoadModelRequest {
+export interface LoadModelRequest {
     /** Your organization identifier */
     organizationId: string;
 }

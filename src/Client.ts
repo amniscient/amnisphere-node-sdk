@@ -4,8 +4,11 @@
 
 import * as environments from "./environments";
 import * as core from "./core";
-import { Model } from "./api/resources/model/client/Client";
-import { Detection } from "./api/resources/detection/client/Client";
+import * as AmniscientApi from "./api/index";
+import * as serializers from "./serialization/index";
+import urlJoin from "url-join";
+import * as errors from "./errors/index";
+import { toJson } from "./core/json";
 
 export declare namespace AmniscientApiClient {
     export interface Options {
@@ -31,16 +34,179 @@ export declare namespace AmniscientApiClient {
 }
 
 export class AmniscientApiClient {
-    protected _model: Model | undefined;
-    protected _detection: Detection | undefined;
-
     constructor(protected readonly _options: AmniscientApiClient.Options) {}
 
-    public get model(): Model {
-        return (this._model ??= new Model(this._options));
+    /**
+     * Initializes a model for inference. This endpoint must be called before running any detections.
+     *
+     * @param {string} modelId - The model ID of an active and trained AI model within your organization
+     * @param {AmniscientApi.LoadModelRequest} request
+     * @param {AmniscientApiClient.RequestOptions} requestOptions - Request-specific configuration.
+     *
+     * @throws {@link AmniscientApi.BadRequestError}
+     * @throws {@link AmniscientApi.UnauthorizedError}
+     *
+     * @example
+     *     await client.loadModel("model_id", {
+     *         organizationId: "organization_id"
+     *     })
+     */
+    public async loadModel(
+        modelId: string,
+        request: AmniscientApi.LoadModelRequest,
+        requestOptions?: AmniscientApiClient.RequestOptions,
+    ): Promise<AmniscientApi.LoadModelResponse> {
+        const _response = await core.fetcher({
+            url: urlJoin(
+                (await core.Supplier.get(this._options.baseUrl)) ??
+                    (await core.Supplier.get(this._options.environment)) ??
+                    environments.AmniscientApiEnvironment.Default,
+                `loadModel/${encodeURIComponent(modelId)}`,
+            ),
+            method: "POST",
+            headers: {
+                "x-api-key": await core.Supplier.get(this._options.apiKey),
+                "X-Fern-Language": "JavaScript",
+                "X-Fern-SDK-Name": "amniscient",
+                "X-Fern-SDK-Version": "0.0.1",
+                "User-Agent": "amniscient/0.0.1",
+                "X-Fern-Runtime": core.RUNTIME.type,
+                "X-Fern-Runtime-Version": core.RUNTIME.version,
+                ...requestOptions?.headers,
+            },
+            contentType: "application/json",
+            requestType: "json",
+            body: serializers.LoadModelRequest.jsonOrThrow(request, { unrecognizedObjectKeys: "strip" }),
+            timeoutMs: requestOptions?.timeoutInSeconds != null ? requestOptions.timeoutInSeconds * 1000 : 60000,
+            maxRetries: requestOptions?.maxRetries,
+            abortSignal: requestOptions?.abortSignal,
+        });
+        if (_response.ok) {
+            return serializers.LoadModelResponse.parseOrThrow(_response.body, {
+                unrecognizedObjectKeys: "passthrough",
+                allowUnrecognizedUnionMembers: true,
+                allowUnrecognizedEnumValues: true,
+                breadcrumbsPrefix: ["response"],
+            });
+        }
+
+        if (_response.error.reason === "status-code") {
+            switch (_response.error.statusCode) {
+                case 400:
+                    throw new AmniscientApi.BadRequestError(_response.error.body);
+                case 401:
+                    throw new AmniscientApi.UnauthorizedError(
+                        serializers.UnauthorizedErrorBody.parseOrThrow(_response.error.body, {
+                            unrecognizedObjectKeys: "passthrough",
+                            allowUnrecognizedUnionMembers: true,
+                            allowUnrecognizedEnumValues: true,
+                            breadcrumbsPrefix: ["response"],
+                        }),
+                    );
+                default:
+                    throw new errors.AmniscientApiError({
+                        statusCode: _response.error.statusCode,
+                        body: _response.error.body,
+                    });
+            }
+        }
+
+        switch (_response.error.reason) {
+            case "non-json":
+                throw new errors.AmniscientApiError({
+                    statusCode: _response.error.statusCode,
+                    body: _response.error.rawBody,
+                });
+            case "timeout":
+                throw new errors.AmniscientApiTimeoutError("Timeout exceeded when calling POST /loadModel/{model_id}.");
+            case "unknown":
+                throw new errors.AmniscientApiError({
+                    message: _response.error.errorMessage,
+                });
+        }
     }
 
-    public get detection(): Detection {
-        return (this._detection ??= new Detection(this._options));
+    /**
+     * Detects an object within an uploaded image file. Make sure to load the model you're using for detection first!
+     *
+     * @param {AmniscientApi.DetectRequest} request
+     * @param {AmniscientApiClient.RequestOptions} requestOptions - Request-specific configuration.
+     *
+     * @throws {@link AmniscientApi.BadRequestError}
+     */
+    public async detect(
+        request: AmniscientApi.DetectRequest,
+        requestOptions?: AmniscientApiClient.RequestOptions,
+    ): Promise<AmniscientApi.DetectResponse> {
+        const _request = await core.newFormData();
+        _request.append("organization_id", request.organizationId);
+        if (request.file != null) {
+            if (Array.isArray(request.file) || request.file instanceof Set)
+                for (const _item of request.file) {
+                    _request.append("file", typeof _item === "string" ? _item : toJson(_item));
+                }
+        }
+
+        const _maybeEncodedRequest = await _request.getRequest();
+        const _response = await core.fetcher({
+            url: urlJoin(
+                (await core.Supplier.get(this._options.baseUrl)) ??
+                    (await core.Supplier.get(this._options.environment)) ??
+                    environments.AmniscientApiEnvironment.Default,
+                "detect",
+            ),
+            method: "POST",
+            headers: {
+                "x-api-key": await core.Supplier.get(this._options.apiKey),
+                "X-Fern-Language": "JavaScript",
+                "X-Fern-SDK-Name": "amniscient",
+                "X-Fern-SDK-Version": "0.0.1",
+                "User-Agent": "amniscient/0.0.1",
+                "X-Fern-Runtime": core.RUNTIME.type,
+                "X-Fern-Runtime-Version": core.RUNTIME.version,
+                ..._maybeEncodedRequest.headers,
+                ...requestOptions?.headers,
+            },
+            requestType: "file",
+            duplex: _maybeEncodedRequest.duplex,
+            body: _maybeEncodedRequest.body,
+            timeoutMs: requestOptions?.timeoutInSeconds != null ? requestOptions.timeoutInSeconds * 1000 : 60000,
+            maxRetries: requestOptions?.maxRetries,
+            abortSignal: requestOptions?.abortSignal,
+        });
+        if (_response.ok) {
+            return serializers.DetectResponse.parseOrThrow(_response.body, {
+                unrecognizedObjectKeys: "passthrough",
+                allowUnrecognizedUnionMembers: true,
+                allowUnrecognizedEnumValues: true,
+                breadcrumbsPrefix: ["response"],
+            });
+        }
+
+        if (_response.error.reason === "status-code") {
+            switch (_response.error.statusCode) {
+                case 400:
+                    throw new AmniscientApi.BadRequestError(_response.error.body);
+                default:
+                    throw new errors.AmniscientApiError({
+                        statusCode: _response.error.statusCode,
+                        body: _response.error.body,
+                    });
+            }
+        }
+
+        switch (_response.error.reason) {
+            case "non-json":
+                throw new errors.AmniscientApiError({
+                    statusCode: _response.error.statusCode,
+                    body: _response.error.rawBody,
+                });
+            case "timeout":
+                throw new errors.AmniscientApiTimeoutError("Timeout exceeded when calling POST /detect.");
+            case "unknown":
+                throw new errors.AmniscientApiError({
+                    message: _response.error.errorMessage,
+                });
+        }
     }
 }
