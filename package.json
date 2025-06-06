@@ -1,6 +1,6 @@
 {
     "name": "amniscient",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "private": false,
     "repository": "https://github.com/amniscient/amnisphere-node-sdk",
     "main": "./index.js",
@@ -39,5 +39,6 @@
         "fs": false,
         "os": false,
         "path": false
-    }
+    },
+    "packageManager": "yarn@1.22.22"
 }

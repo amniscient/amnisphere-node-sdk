@@ -8,7 +8,8 @@ import * as AmniscientApi from "./api/index";
 import * as serializers from "./serialization/index";
 import urlJoin from "url-join";
 import * as errors from "./errors/index";
-import { toJson } from "./core/json";
+import * as fs from "fs";
+import { Blob } from "buffer";
 
 export declare namespace AmniscientApiClient {
     export interface Options {
@@ -51,25 +52,33 @@ export class AmniscientApiClient {
      *         organizationId: "organization_id"
      *     })
      */
-    public async loadModel(
+    public loadModel(
         modelId: string,
         request: AmniscientApi.LoadModelRequest,
         requestOptions?: AmniscientApiClient.RequestOptions,
-    ): Promise<AmniscientApi.LoadModelResponse> {
+    ): core.HttpResponsePromise<string[]> {
+        return core.HttpResponsePromise.fromPromise(this.__loadModel(modelId, request, requestOptions));
+    }
+
+    private async __loadModel(
+        modelId: string,
+        request: AmniscientApi.LoadModelRequest,
+        requestOptions?: AmniscientApiClient.RequestOptions,
+    ): Promise<core.WithRawResponse<string[]>> {
         const _response = await core.fetcher({
             url: urlJoin(
                 (await core.Supplier.get(this._options.baseUrl)) ??
                     (await core.Supplier.get(this._options.environment)) ??
                     environments.AmniscientApiEnvironment.Default,
-                `loadModel/${encodeURIComponent(modelId)}`,
+                `load-model/${encodeURIComponent(modelId)}`,
             ),
             method: "POST",
             headers: {
                 "x-api-key": await core.Supplier.get(this._options.apiKey),
                 "X-Fern-Language": "JavaScript",
                 "X-Fern-SDK-Name": "amniscient",
-                "X-Fern-SDK-Version": "0.0.1",
-                "User-Agent": "amniscient/0.0.1",
+                "X-Fern-SDK-Version": "0.0.2",
+                "User-Agent": "amniscient/0.0.2",
                 "X-Fern-Runtime": core.RUNTIME.type,
                 "X-Fern-Runtime-Version": core.RUNTIME.version,
                 ...requestOptions?.headers,
@@ -82,18 +91,21 @@ export class AmniscientApiClient {
             abortSignal: requestOptions?.abortSignal,
         });
         if (_response.ok) {
-            return serializers.LoadModelResponse.parseOrThrow(_response.body, {
-                unrecognizedObjectKeys: "passthrough",
-                allowUnrecognizedUnionMembers: true,
-                allowUnrecognizedEnumValues: true,
-                breadcrumbsPrefix: ["response"],
-            });
+            return {
+                data: serializers.loadModel.Response.parseOrThrow(_response.body, {
+                    unrecognizedObjectKeys: "passthrough",
+                    allowUnrecognizedUnionMembers: true,
+                    allowUnrecognizedEnumValues: true,
+                    breadcrumbsPrefix: ["response"],
+                }),
+                rawResponse: _response.rawResponse,
+            };
         }
 
         if (_response.error.reason === "status-code") {
             switch (_response.error.statusCode) {
                 case 400:
-                    throw new AmniscientApi.BadRequestError(_response.error.body);
+                    throw new AmniscientApi.BadRequestError(_response.error.body, _response.rawResponse);
                 case 401:
                     throw new AmniscientApi.UnauthorizedError(
                         serializers.UnauthorizedErrorBody.parseOrThrow(_response.error.body, {
@@ -102,11 +114,13 @@ export class AmniscientApiClient {
                             allowUnrecognizedEnumValues: true,
                             breadcrumbsPrefix: ["response"],
                         }),
+                        _response.rawResponse,
                     );
                 default:
                     throw new errors.AmniscientApiError({
                         statusCode: _response.error.statusCode,
                         body: _response.error.body,
+                        rawResponse: _response.rawResponse,
                     });
             }
         }
@@ -116,12 +130,16 @@ export class AmniscientApiClient {
                 throw new errors.AmniscientApiError({
                     statusCode: _response.error.statusCode,
                     body: _response.error.rawBody,
+                    rawResponse: _response.rawResponse,
                 });
             case "timeout":
-                throw new errors.AmniscientApiTimeoutError("Timeout exceeded when calling POST /loadModel/{model_id}.");
+                throw new errors.AmniscientApiTimeoutError(
+                    "Timeout exceeded when calling POST /load-model/{model_id}.",
+                );
             case "unknown":
                 throw new errors.AmniscientApiError({
                     message: _response.error.errorMessage,
+                    rawResponse: _response.rawResponse,
                 });
         }
     }
@@ -129,24 +147,33 @@ export class AmniscientApiClient {
     /**
      * Detects an object within an uploaded image file. Make sure to load the model you're using for detection first!
      *
+     * @param {File | fs.ReadStream | Blob} file
      * @param {AmniscientApi.DetectRequest} request
      * @param {AmniscientApiClient.RequestOptions} requestOptions - Request-specific configuration.
      *
      * @throws {@link AmniscientApi.BadRequestError}
+     *
+     * @example
+     *     await client.detect(fs.createReadStream("/path/to/your/file"), {
+     *         organizationId: "organization_id"
+     *     })
      */
-    public async detect(
+    public detect(
+        file: File | fs.ReadStream | Blob,
         request: AmniscientApi.DetectRequest,
         requestOptions?: AmniscientApiClient.RequestOptions,
-    ): Promise<AmniscientApi.DetectResponse> {
+    ): core.HttpResponsePromise<AmniscientApi.DetectResponse> {
+        return core.HttpResponsePromise.fromPromise(this.__detect(file, request, requestOptions));
+    }
+
+    private async __detect(
+        file: File | fs.ReadStream | Blob,
+        request: AmniscientApi.DetectRequest,
+        requestOptions?: AmniscientApiClient.RequestOptions,
+    ): Promise<core.WithRawResponse<AmniscientApi.DetectResponse>> {
         const _request = await core.newFormData();
         _request.append("organization_id", request.organizationId);
-        if (request.file != null) {
-            if (Array.isArray(request.file) || request.file instanceof Set)
-                for (const _item of request.file) {
-                    _request.append("file", typeof _item === "string" ? _item : toJson(_item));
-                }
-        }
-
+        await _request.appendFile("file", file);
         const _maybeEncodedRequest = await _request.getRequest();
         const _response = await core.fetcher({
             url: urlJoin(
@@ -160,8 +187,8 @@ export class AmniscientApiClient {
                 "x-api-key": await core.Supplier.get(this._options.apiKey),
                 "X-Fern-Language": "JavaScript",
                 "X-Fern-SDK-Name": "amniscient",
-                "X-Fern-SDK-Version": "0.0.1",
-                "User-Agent": "amniscient/0.0.1",
+                "X-Fern-SDK-Version": "0.0.2",
+                "User-Agent": "amniscient/0.0.2",
                 "X-Fern-Runtime": core.RUNTIME.type,
                 "X-Fern-Runtime-Version": core.RUNTIME.version,
                 ..._maybeEncodedRequest.headers,
@@ -175,22 +202,26 @@ export class AmniscientApiClient {
             abortSignal: requestOptions?.abortSignal,
         });
         if (_response.ok) {
-            return serializers.DetectResponse.parseOrThrow(_response.body, {
-                unrecognizedObjectKeys: "passthrough",
-                allowUnrecognizedUnionMembers: true,
-                allowUnrecognizedEnumValues: true,
-                breadcrumbsPrefix: ["response"],
-            });
+            return {
+                data: serializers.DetectResponse.parseOrThrow(_response.body, {
+                    unrecognizedObjectKeys: "passthrough",
+                    allowUnrecognizedUnionMembers: true,
+                    allowUnrecognizedEnumValues: true,
+                    breadcrumbsPrefix: ["response"],
+                }),
+                rawResponse: _response.rawResponse,
+            };
         }
 
         if (_response.error.reason === "status-code") {
             switch (_response.error.statusCode) {
                 case 400:
-                    throw new AmniscientApi.BadRequestError(_response.error.body);
+                    throw new AmniscientApi.BadRequestError(_response.error.body, _response.rawResponse);
                 default:
                     throw new errors.AmniscientApiError({
                         statusCode: _response.error.statusCode,
                         body: _response.error.body,
+                        rawResponse: _response.rawResponse,
                     });
             }
         }
@@ -200,12 +231,14 @@ export class AmniscientApiClient {
                 throw new errors.AmniscientApiError({
                     statusCode: _response.error.statusCode,
                     body: _response.error.rawBody,
+                    rawResponse: _response.rawResponse,
                 });
             case "timeout":
                 throw new errors.AmniscientApiTimeoutError("Timeout exceeded when calling POST /detect.");
             case "unknown":
                 throw new errors.AmniscientApiError({
                     message: _response.error.errorMessage,
+                    rawResponse: _response.rawResponse,
                 });
         }
     }

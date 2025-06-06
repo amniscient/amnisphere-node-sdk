@@ -4,13 +4,15 @@
 
 import * as errors from "../../errors/index";
 import * as AmniscientApi from "../index";
+import * as core from "../../core";
 
 export class UnauthorizedError extends errors.AmniscientApiError {
-    constructor(body: AmniscientApi.UnauthorizedErrorBody) {
+    constructor(body: AmniscientApi.UnauthorizedErrorBody, rawResponse?: core.RawResponse) {
         super({
             message: "UnauthorizedError",
             statusCode: 401,
             body: body,
+            rawResponse: rawResponse,
         });
         Object.setPrototypeOf(this, UnauthorizedError.prototype);
     }
